@@ -22,13 +22,13 @@
 
 ```
 tauri_demo/
-├── src-tauri/           # Rust код
+├── back/                # Rust код
 │   ├── src/
 │   │   └── main.rs      # Основной файл с командами
 │   ├── Cargo.toml       # Зависимости Rust
 │   ├── build.rs         # Build скрипт
 │   └── tauri.conf.json  # Конфигурация Tauri
-└── public/              # Frontend файлы
+└── front/               # Frontend файлы
     ├── index.html       # HTML
     ├── styles.css       # Стили
     └── app.js           # JavaScript логика
@@ -94,14 +94,14 @@ cargo install tauri-cli --version "^2.0.0"
 ### Запуск в режиме разработки
 
 ```bash
-cd tauri_demo/src-tauri
+cd tauri_demo/back
 cargo tauri dev
 ```
 
 ### Сборка для продакшена
 
 ```bash
-cd tauri_demo/src-tauri
+cd tauri_demo/back
 cargo tauri build
 ```
 

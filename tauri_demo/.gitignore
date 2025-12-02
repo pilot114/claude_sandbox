@@ -3,7 +3,7 @@ target/
 Cargo.lock
 
 # Tauri
-src-tauri/target/
+back/target/
 
 # Dependencies
 node_modules/
