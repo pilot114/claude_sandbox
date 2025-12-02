@@ -3,83 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tauri 2.2 Demo</title>
+    <title>Tauri Demo</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>🚀 Tauri 2.2 Demo App</h1>
-            <p class="subtitle">Демонстрация возможностей Tauri framework</p>
-        </header>
+        <h1>Tauri 2.2 Demo</h1>
 
-        <main>
-            <!-- Greet Section -->
-            <section class="demo-section">
-                <h2>1. Простая команда (Greet)</h2>
-                <div class="demo-content">
-                    <input type="text" id="name-input" placeholder="Введите ваше имя" value="Мир">
-                    <button onclick="greetUser()">Поздороваться</button>
-                    <div class="result" id="greet-result"></div>
-                </div>
-            </section>
+        <section data-demo="greet">
+            <h3>Greet</h3>
+            <input data-param="name" value="World">
+            <button data-cmd="greet">Run</button>
+            <pre></pre>
+        </section>
 
-            <!-- Calculator Section -->
-            <section class="demo-section">
-                <h2>2. Калькулятор (обработка ошибок)</h2>
-                <div class="demo-content">
-                    <div class="calculator">
-                        <input type="number" id="calc-a" value="10">
-                        <select id="calc-op">
-                            <option value="add">+</option>
-                            <option value="subtract">-</option>
-                            <option value="multiply">×</option>
-                            <option value="divide">÷</option>
-                        </select>
-                        <input type="number" id="calc-b" value="5">
-                        <button onclick="calculateNumbers()">=</button>
-                    </div>
-                    <div class="result" id="calc-result"></div>
-                </div>
-            </section>
+        <section data-demo="calc">
+            <h3>Calculator</h3>
+            <input data-param="a" type="number" value="10">
+            <select data-param="operation">
+                <option value="add">+</option>
+                <option value="subtract">-</option>
+                <option value="multiply">×</option>
+                <option value="divide">÷</option>
+            </select>
+            <input data-param="b" type="number" value="5">
+            <button data-cmd="calculate">Run</button>
+            <pre></pre>
+        </section>
 
-            <!-- System Info Section -->
-            <section class="demo-section">
-                <h2>3. Системная информация (структурированные данные)</h2>
-                <div class="demo-content">
-                    <button onclick="fetchSystemInfo()">Получить информацию о системе</button>
-                    <div class="result" id="system-info"></div>
-                </div>
-            </section>
+        <section data-demo="sysinfo">
+            <h3>System Info</h3>
+            <button data-cmd="get_system_info">Run</button>
+            <pre></pre>
+        </section>
 
-            <!-- Async Operation Section -->
-            <section class="demo-section">
-                <h2>4. Асинхронная операция</h2>
-                <div class="demo-content">
-                    <input type="number" id="async-duration" value="2" min="1" max="10">
-                    <span>секунд</span>
-                    <button onclick="runAsyncOperation()">Запустить</button>
-                    <div class="result" id="async-result"></div>
-                </div>
-            </section>
+        <section data-demo="async">
+            <h3>Async Operation</h3>
+            <input data-param="duration" type="number" value="2">
+            <button data-cmd="async_operation">Run</button>
+            <pre></pre>
+        </section>
 
-            <!-- Counter Section -->
-            <section class="demo-section">
-                <h2>5. Счётчик (State Management)</h2>
-                <div class="demo-content">
-                    <div class="counter-display">
-                        <span>Текущее значение: </span>
-                        <span id="counter-value" class="counter-number">0</span>
-                    </div>
-                    <button onclick="incrementCounter()">Увеличить счётчик</button>
-                    <button onclick="getCounterValue()" class="secondary">Получить значение</button>
-                </div>
-            </section>
-        </main>
-
-        <footer>
-            <p>Построено на Tauri 2.2 - легковесная альтернатива Electron</p>
-        </footer>
+        <section data-demo="counter">
+            <h3>Counter: <span id="counter">0</span></h3>
+            <button data-cmd="increment_counter">+1</button>
+            <button data-cmd="get_counter">Refresh</button>
+        </section>
     </div>
 
     <script src="app.js"></script>
