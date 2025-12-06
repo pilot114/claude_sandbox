@@ -3,8 +3,12 @@
     "description": "Simple Jira client application",
     "type": "project",
     "require": {
-        "php": ">=8.1",
-        "lesstif/php-jira-rest-client": "^5.0"
+        "php": ">=8.2",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "suggest": {
+        "lesstif/php-jira-rest-client": "^5.0 - Alternative Jira client implementation"
     },
     "autoload": {
         "psr-4": {

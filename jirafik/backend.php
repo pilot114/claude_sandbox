@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-use JiraRestApi\Issue\IssueService;
-use JiraRestApi\Issue\Comment;
-use JiraRestApi\Issue\Worklog;
-use JiraRestApi\JiraException;
+use Jirafik\Client\JiraClientInterface;
+use Jirafik\Client\JiraClientFactory;
+use Jirafik\Client\JiraException;
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -51,82 +50,6 @@ function getInput(): array
     return json_decode(file_get_contents('php://input'), true) ?? [];
 }
 
-function parseIssue(object $issue, bool $detailed = false): array
-{
-    $fields = $issue->fields;
-
-    $result = [
-        'key' => $issue->key,
-        'id' => $issue->id,
-        'summary' => $fields->summary ?? '',
-        'status' => $fields->status->name ?? 'Unknown',
-        'statusCategory' => $fields->status->statusCategory->key ?? 'undefined',
-        'priority' => $fields->priority->name ?? 'None',
-        'assignee' => $fields->assignee->displayName ?? 'Unassigned',
-        'assigneeAvatar' => $fields->assignee->avatarUrls->{'48x48'} ?? null,
-        'reporter' => $fields->reporter->displayName ?? 'Unknown',
-        'created' => $fields->created ?? null,
-        'updated' => $fields->updated ?? null,
-        'dueDate' => $fields->duedate ?? null,
-        'labels' => $fields->labels ?? [],
-        'issueType' => $fields->issuetype->name ?? 'Task',
-        'issueTypeIcon' => $fields->issuetype->iconUrl ?? null,
-        'originalEstimate' => $fields->timeoriginalestimate ?? 0,
-        'remainingEstimate' => $fields->timeestimate ?? 0,
-        'timeSpent' => $fields->timespent ?? 0,
-        'originalEstimateFormatted' => $fields->timetracking->originalEstimate ?? null,
-        'remainingEstimateFormatted' => $fields->timetracking->remainingEstimate ?? null,
-        'timeSpentFormatted' => $fields->timetracking->timeSpent ?? null,
-    ];
-
-    if (!$detailed) {
-        return $result;
-    }
-
-    $result['description'] = $fields->description ?? '';
-
-    $result['comments'] = array_map(
-        fn(object $comment) => [
-            'id' => $comment->id,
-            'author' => $comment->author->displayName ?? 'Unknown',
-            'authorAvatar' => $comment->author->avatarUrls->{'48x48'} ?? null,
-            'body' => $comment->body ?? '',
-            'created' => $comment->created ?? null,
-            'updated' => $comment->updated ?? null,
-        ],
-        $fields->comment->comments ?? []
-    );
-
-    $result['attachments'] = array_map(
-        fn(object $attachment) => [
-            'id' => $attachment->id,
-            'filename' => $attachment->filename,
-            'size' => $attachment->size,
-            'mimeType' => $attachment->mimeType,
-            'content' => $attachment->content,
-            'thumbnail' => $attachment->thumbnail ?? null,
-            'author' => $attachment->author->displayName ?? 'Unknown',
-            'created' => $attachment->created ?? null,
-        ],
-        $fields->attachment ?? []
-    );
-
-    $result['worklogs'] = array_map(
-        fn(object $worklog) => [
-            'id' => $worklog->id,
-            'author' => $worklog->author->displayName ?? 'Unknown',
-            'authorAvatar' => $worklog->author->avatarUrls->{'48x48'} ?? null,
-            'timeSpent' => $worklog->timeSpent ?? '',
-            'timeSpentSeconds' => $worklog->timeSpentSeconds ?? 0,
-            'started' => $worklog->started ?? null,
-            'comment' => $worklog->comment ?? '',
-        ],
-        $fields->worklog->worklogs ?? []
-    );
-
-    return $result;
-}
-
 // ============================================
 // Action Handlers
 // ============================================
@@ -135,19 +58,19 @@ function parseIssue(object $issue, bool $detailed = false): array
  * Search issues with JQL
  * GET ?action=search&jql=project=XXX&maxResults=50&startAt=0
  */
-function actionSearch(IssueService $issueService): never
+function actionSearch(JiraClientInterface $client): never
 {
     $jql = $_GET['jql'] ?? 'ORDER BY updated DESC';
     $maxResults = (int) ($_GET['maxResults'] ?? 50);
     $startAt = (int) ($_GET['startAt'] ?? 0);
 
-    $result = $issueService->search($jql, $startAt, $maxResults, [
+    $result = $client->search($jql, $startAt, $maxResults, [
         'summary', 'status', 'priority', 'assignee', 'reporter',
         'created', 'updated', 'duedate', 'labels', 'issuetype',
         'timeoriginalestimate', 'timeestimate', 'timespent', 'timetracking'
     ]);
 
-    $issues = array_map(fn(object $issue) => parseIssue($issue), $result->issues);
+    $issues = array_map(fn($issue) => $issue->toArray(), $result->issues);
 
     jsonResponse([
         'success' => true,
@@ -162,7 +85,7 @@ function actionSearch(IssueService $issueService): never
  * Get single issue with full details
  * GET ?action=get&key=XXX-123
  */
-function actionGet(IssueService $issueService): never
+function actionGet(JiraClientInterface $client): never
 {
     $key = $_GET['key'] ?? '';
 
@@ -170,11 +93,11 @@ function actionGet(IssueService $issueService): never
         jsonResponse(['success' => false, 'error' => 'Issue key is required'], 400);
     }
 
-    $issue = $issueService->get($key, ['expand' => 'renderedFields,changelog']);
+    $issue = $client->getIssue($key, ['renderedFields', 'changelog']);
 
     jsonResponse([
         'success' => true,
-        'issue' => parseIssue($issue, detailed: true),
+        'issue' => $issue->toArray(detailed: true),
     ]);
 }
 
@@ -182,17 +105,17 @@ function actionGet(IssueService $issueService): never
  * Get time tracking report for issues
  * GET ?action=timeReport&jql=project=XXX&maxResults=100
  */
-function actionTimeReport(IssueService $issueService): never
+function actionTimeReport(JiraClientInterface $client): never
 {
     $jql = $_GET['jql'] ?? 'ORDER BY updated DESC';
     $maxResults = (int) ($_GET['maxResults'] ?? 100);
 
-    $result = $issueService->search($jql, 0, $maxResults, [
+    $result = $client->search($jql, 0, $maxResults, [
         'summary', 'status', 'assignee', 'issuetype',
         'timeoriginalestimate', 'timeestimate', 'timespent', 'timetracking', 'worklog'
     ]);
 
-    $issues = array_map(fn(object $issue) => parseIssue($issue), $result->issues);
+    $issues = array_map(fn($issue) => $issue->toArray(), $result->issues);
 
     $totalOriginalEstimate = array_sum(array_column($issues, 'originalEstimate'));
     $totalRemainingEstimate = array_sum(array_column($issues, 'remainingEstimate'));
@@ -216,7 +139,7 @@ function actionTimeReport(IssueService $issueService): never
  * Add comment to issue
  * POST ?action=addComment  body: {key: "XXX-123", comment: "text"}
  */
-function actionAddComment(IssueService $issueService): never
+function actionAddComment(JiraClientInterface $client): never
 {
     $input = getInput();
     $key = $input['key'] ?? '';
@@ -226,19 +149,11 @@ function actionAddComment(IssueService $issueService): never
         jsonResponse(['success' => false, 'error' => 'Issue key and comment are required'], 400);
     }
 
-    $comment = new Comment();
-    $comment->setBody($commentText);
-
-    $result = $issueService->addComment($key, $comment);
+    $result = $client->addComment($key, $commentText);
 
     jsonResponse([
         'success' => true,
-        'comment' => [
-            'id' => $result->id,
-            'author' => $result->author->displayName ?? 'Unknown',
-            'body' => $result->body,
-            'created' => $result->created,
-        ],
+        'comment' => $result->toArray(),
     ]);
 }
 
@@ -246,35 +161,23 @@ function actionAddComment(IssueService $issueService): never
  * Add worklog to issue
  * POST ?action=addWorklog  body: {key: "XXX-123", timeSpent: "2h", comment: "text", started: "2024-01-01T10:00:00.000+0000"}
  */
-function actionAddWorklog(IssueService $issueService): never
+function actionAddWorklog(JiraClientInterface $client): never
 {
     $input = getInput();
     $key = $input['key'] ?? '';
     $timeSpent = $input['timeSpent'] ?? '';
     $comment = $input['comment'] ?? '';
-    $started = $input['started'] ?? date('Y-m-d\TH:i:s.000O');
+    $started = $input['started'] ?? null;
 
     if ($key === '' || $timeSpent === '') {
         jsonResponse(['success' => false, 'error' => 'Issue key and timeSpent are required'], 400);
     }
 
-    $worklog = new Worklog();
-    $worklog->setComment($comment)
-            ->setStarted($started)
-            ->setTimeSpent($timeSpent);
-
-    $result = $issueService->addWorklog($key, $worklog);
+    $result = $client->addWorklog($key, $timeSpent, $comment, $started);
 
     jsonResponse([
         'success' => true,
-        'worklog' => [
-            'id' => $result->id,
-            'author' => $result->author->displayName ?? 'Unknown',
-            'timeSpent' => $result->timeSpent,
-            'timeSpentSeconds' => $result->timeSpentSeconds,
-            'started' => $result->started,
-            'comment' => $result->comment ?? '',
-        ],
+        'worklog' => $result->toArray(),
     ]);
 }
 
@@ -297,7 +200,8 @@ function actionUnknown(): never
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
-    $issueService = new IssueService();
+    // Create client from environment (JIRA_CLIENT_TYPE: 'native' or 'lesstif')
+    $client = JiraClientFactory::fromEnv();
 
     $handler = match ($action) {
         'search' => actionSearch(...),
@@ -305,12 +209,17 @@ try {
         'timeReport' => actionTimeReport(...),
         'addComment' => actionAddComment(...),
         'addWorklog' => actionAddWorklog(...),
-        default => fn(IssueService $_) => actionUnknown(),
+        default => fn(JiraClientInterface $_) => actionUnknown(),
     };
 
-    $handler($issueService);
+    $handler($client);
 
-} catch (JiraException|Exception $e) {
+} catch (JiraException $e) {
+    jsonResponse([
+        'success' => false,
+        'error' => $e->getMessage(),
+    ], 500);
+} catch (Exception $e) {
     jsonResponse([
         'success' => false,
         'error' => $e->getMessage(),
