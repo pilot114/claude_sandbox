@@ -16,18 +16,4 @@ final readonly class Attachment
         public string $author,
         public ?string $created,
     ) {}
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'filename' => $this->filename,
-            'size' => $this->size,
-            'mimeType' => $this->mimeType,
-            'content' => $this->content,
-            'thumbnail' => $this->thumbnail,
-            'author' => $this->author,
-            'created' => $this->created,
-        ];
-    }
 }

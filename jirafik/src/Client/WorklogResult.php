@@ -14,16 +14,4 @@ final readonly class WorklogResult
         public ?string $started,
         public string $comment = '',
     ) {}
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'author' => $this->author,
-            'timeSpent' => $this->timeSpent,
-            'timeSpentSeconds' => $this->timeSpentSeconds,
-            'started' => $this->started,
-            'comment' => $this->comment,
-        ];
-    }
 }

@@ -68,9 +68,9 @@ final readonly class Issue
 
         if ($detailed) {
             $result['description'] = $this->description;
-            $result['comments'] = array_map(fn(Comment $c) => $c->toArray(), $this->comments);
-            $result['attachments'] = array_map(fn(Attachment $a) => $a->toArray(), $this->attachments);
-            $result['worklogs'] = array_map(fn(Worklog $w) => $w->toArray(), $this->worklogs);
+            $result['comments'] = array_map(static fn(Comment $c) => (array) $c, $this->comments);
+            $result['attachments'] = array_map(static fn(Attachment $a) => (array) $a, $this->attachments);
+            $result['worklogs'] = array_map(static fn(Worklog $w) => (array) $w, $this->worklogs);
         }
 
         return $result;

@@ -12,14 +12,4 @@ final readonly class CommentResult
         public string $body,
         public ?string $created,
     ) {}
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'author' => $this->author,
-            'body' => $this->body,
-            'created' => $this->created,
-        ];
-    }
 }

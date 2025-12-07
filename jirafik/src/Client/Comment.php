@@ -14,16 +14,4 @@ final readonly class Comment
         public ?string $created,
         public ?string $updated = null,
     ) {}
-
-    public function toArray(): array
-    {
-        return [
-            'id' => $this->id,
-            'author' => $this->author,
-            'authorAvatar' => $this->authorAvatar,
-            'body' => $this->body,
-            'created' => $this->created,
-            'updated' => $this->updated,
-        ];
-    }
 }

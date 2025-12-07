@@ -8,7 +8,7 @@ namespace Jirafik\Client;
  * Native PHP implementation without external dependencies
  * Uses cURL for HTTP requests to Jira REST API
  */
-final class NativeJiraClient implements JiraClientInterface
+final class NativeJiraClient
 {
     private string $baseUrl;
     private string $authHeader;
@@ -29,7 +29,7 @@ final class NativeJiraClient implements JiraClientInterface
         $token = $_ENV['JIRA_PASS'] ?? getenv('JIRA_PASS') ?: '';
 
         if ($host === '' || $user === '' || $token === '') {
-            throw new JiraException('Missing JIRA_HOST, JIRA_USER or JIRA_PASS environment variables');
+            throw new \Exception('Missing JIRA_HOST, JIRA_USER or JIRA_PASS environment variables');
         }
 
         return new self($host, $user, $token);
@@ -142,7 +142,7 @@ final class NativeJiraClient implements JiraClientInterface
         curl_close($ch);
 
         if ($error) {
-            throw new JiraException("cURL error: {$error}");
+            throw new \Exception("cURL error: {$error}");
         }
 
         $decoded = json_decode($response, true) ?? [];
@@ -151,7 +151,7 @@ final class NativeJiraClient implements JiraClientInterface
             $message = $decoded['errorMessages'][0]
                 ?? $decoded['errors'][array_key_first($decoded['errors'] ?? [])]
                 ?? "HTTP error {$httpCode}";
-            throw new JiraException($message, $httpCode, $decoded);
+            throw new \Exception($message, $httpCode, $decoded);
         }
 
         return $decoded;

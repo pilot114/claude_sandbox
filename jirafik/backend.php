@@ -34,8 +34,6 @@ function loadEnv(string $path): void
 
 loadEnv(__DIR__ . '/.env');
 
-require_once __DIR__ . '/src/Client/JiraClientInterface.php';
-require_once __DIR__ . '/src/Client/JiraException.php';
 require_once __DIR__ . '/src/Client/Issue.php';
 require_once __DIR__ . '/src/Client/SearchResult.php';
 require_once __DIR__ . '/src/Client/Comment.php';
@@ -44,11 +42,8 @@ require_once __DIR__ . '/src/Client/Worklog.php';
 require_once __DIR__ . '/src/Client/WorklogResult.php';
 require_once __DIR__ . '/src/Client/Attachment.php';
 require_once __DIR__ . '/src/Client/NativeJiraClient.php';
-require_once __DIR__ . '/src/Client/JiraClientFactory.php';
 
-use Jirafik\Client\JiraClientInterface;
-use Jirafik\Client\JiraClientFactory;
-use Jirafik\Client\JiraException;
+use Jirafik\Client\NativeJiraClient;
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -67,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 function jsonResponse(array $data, int $code = 200): never
 {
     http_response_code($code);
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    echo json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
 
@@ -89,7 +84,7 @@ function formatSeconds(int $seconds): string
 
 function getInput(): array
 {
-    return json_decode(file_get_contents('php://input'), true) ?? [];
+    return json_decode(file_get_contents('php://input'), true, 512, JSON_THROW_ON_ERROR) ?? [];
 }
 
 // ============================================
@@ -100,7 +95,7 @@ function getInput(): array
  * Search issues with JQL
  * GET ?action=search&jql=project=XXX&maxResults=50&startAt=0
  */
-function actionSearch(JiraClientInterface $client): never
+function actionSearch(NativeJiraClient $client): never
 {
     $jql = $_GET['jql'] ?? 'ORDER BY updated DESC';
     $maxResults = (int) ($_GET['maxResults'] ?? 50);
@@ -127,7 +122,7 @@ function actionSearch(JiraClientInterface $client): never
  * Get single issue with full details
  * GET ?action=get&key=XXX-123
  */
-function actionGet(JiraClientInterface $client): never
+function actionGet(NativeJiraClient $client): never
 {
     $key = $_GET['key'] ?? '';
 
@@ -147,7 +142,7 @@ function actionGet(JiraClientInterface $client): never
  * Get time tracking report for issues
  * GET ?action=timeReport&jql=project=XXX&maxResults=100
  */
-function actionTimeReport(JiraClientInterface $client): never
+function actionTimeReport(NativeJiraClient $client): never
 {
     $jql = $_GET['jql'] ?? 'ORDER BY updated DESC';
     $maxResults = (int) ($_GET['maxResults'] ?? 100);
@@ -181,7 +176,7 @@ function actionTimeReport(JiraClientInterface $client): never
  * Add comment to issue
  * POST ?action=addComment  body: {key: "XXX-123", comment: "text"}
  */
-function actionAddComment(JiraClientInterface $client): never
+function actionAddComment(NativeJiraClient $client): never
 {
     $input = getInput();
     $key = $input['key'] ?? '';
@@ -195,7 +190,7 @@ function actionAddComment(JiraClientInterface $client): never
 
     jsonResponse([
         'success' => true,
-        'comment' => $result->toArray(),
+        'comment' => (array) $result,
     ]);
 }
 
@@ -203,7 +198,7 @@ function actionAddComment(JiraClientInterface $client): never
  * Add worklog to issue
  * POST ?action=addWorklog  body: {key: "XXX-123", timeSpent: "2h", comment: "text", started: "2024-01-01T10:00:00.000+0000"}
  */
-function actionAddWorklog(JiraClientInterface $client): never
+function actionAddWorklog(NativeJiraClient $client): never
 {
     $input = getInput();
     $key = $input['key'] ?? '';
@@ -219,7 +214,7 @@ function actionAddWorklog(JiraClientInterface $client): never
 
     jsonResponse([
         'success' => true,
-        'worklog' => $result->toArray(),
+        'worklog' => (array) $result,
     ]);
 }
 
@@ -243,7 +238,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
     // Create Jira client from environment variables
-    $client = JiraClientFactory::fromEnv();
+    $client = NativeJiraClient::fromEnv();
 
     $handler = match ($action) {
         'search' => actionSearch(...),
@@ -251,7 +246,7 @@ try {
         'timeReport' => actionTimeReport(...),
         'addComment' => actionAddComment(...),
         'addWorklog' => actionAddWorklog(...),
-        default => fn(JiraClientInterface $_) => actionUnknown(),
+        default => fn(NativeJiraClient $_) => actionUnknown(),
     };
 
     $handler($client);
