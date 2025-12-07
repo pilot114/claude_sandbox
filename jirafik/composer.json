@@ -7,9 +7,6 @@
         "ext-curl": "*",
         "ext-json": "*"
     },
-    "suggest": {
-        "lesstif/php-jira-rest-client": "^5.0 - Alternative Jira client implementation"
-    },
     "autoload": {
         "psr-4": {
             "Jirafik\\": "src/"

@@ -200,7 +200,7 @@ function actionUnknown(): never
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
-    // Create client from environment (JIRA_CLIENT_TYPE: 'native' or 'lesstif')
+    // Create client from environment (JIRA_CLIENT_TYPE: 'native')
     $client = JiraClientFactory::fromEnv();
 
     $handler = match ($action) {

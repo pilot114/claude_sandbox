@@ -7,7 +7,6 @@ namespace Jirafik\Client;
 enum ClientType: string
 {
     case Native = 'native';
-    case Lesstif = 'lesstif';
 }
 
 final class JiraClientFactory
@@ -15,7 +14,7 @@ final class JiraClientFactory
     /**
      * Create Jira client based on type
      *
-     * @param ClientType|string $type Client type ('native' or 'lesstif')
+     * @param ClientType|string $type Client type
      */
     public static function create(ClientType|string $type = ClientType::Native): JiraClientInterface
     {
@@ -23,7 +22,6 @@ final class JiraClientFactory
 
         return match ($clientType) {
             ClientType::Native => NativeJiraClient::fromEnv(),
-            ClientType::Lesstif => new LesstifJiraClient(),
             default => throw new JiraException("Unknown client type: {$type}"),
         };
     }
