@@ -2,7 +2,49 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/vendor/autoload.php';
+// Load environment variables from .env file
+function loadEnv(string $path): void
+{
+    if (!file_exists($path)) {
+        return;
+    }
+
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $line = trim($line);
+
+        // Skip comments
+        if (str_starts_with($line, '#')) {
+            continue;
+        }
+
+        // Parse KEY=VALUE or KEY="VALUE"
+        if (preg_match('/^([A-Z_]+)=(.*)$/', $line, $matches)) {
+            $key = $matches[1];
+            $value = $matches[2];
+
+            // Remove quotes if present
+            $value = trim($value, '"\'');
+
+            $_ENV[$key] = $value;
+            putenv("{$key}={$value}");
+        }
+    }
+}
+
+loadEnv(__DIR__ . '/.env');
+
+require_once __DIR__ . '/src/Client/JiraClientInterface.php';
+require_once __DIR__ . '/src/Client/JiraException.php';
+require_once __DIR__ . '/src/Client/Issue.php';
+require_once __DIR__ . '/src/Client/SearchResult.php';
+require_once __DIR__ . '/src/Client/Comment.php';
+require_once __DIR__ . '/src/Client/CommentResult.php';
+require_once __DIR__ . '/src/Client/Worklog.php';
+require_once __DIR__ . '/src/Client/WorklogResult.php';
+require_once __DIR__ . '/src/Client/Attachment.php';
+require_once __DIR__ . '/src/Client/NativeJiraClient.php';
+require_once __DIR__ . '/src/Client/JiraClientFactory.php';
 
 use Jirafik\Client\JiraClientInterface;
 use Jirafik\Client\JiraClientFactory;
@@ -200,7 +242,7 @@ function actionUnknown(): never
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 try {
-    // Create client from environment (JIRA_CLIENT_TYPE: 'native')
+    // Create Jira client from environment variables
     $client = JiraClientFactory::fromEnv();
 
     $handler = match ($action) {
