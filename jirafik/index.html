@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jirafik - Jira Client</title>
+    <style>
+        :root {
+            --primary: #0052cc;
+            --primary-hover: #0065ff;
+            --success: #00875a;
+            --warning: #ff991f;
+            --danger: #de350b;
+            --bg: #f4f5f7;
+            --card-bg: #ffffff;
+            --text: #172b4d;
+            --text-light: #6b778c;
+            --border: #dfe1e6;
+            --shadow: 0 1px 3px rgba(0,0,0,0.12);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        /* Header */
+        .header {
+            background: var(--primary);
+            color: white;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: rgba(255,255,255,0.8);
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .tab.active {
+            background: white;
+            color: var(--primary);
+        }
+
+        /* Main layout */
+        .main {
+            display: flex;
+            height: calc(100vh - 52px);
+        }
+
+        .panel {
+            display: none;
+            width: 100%;
+        }
+
+        .panel.active {
+            display: flex;
+        }
+
+        /* Issues panel - two columns */
+        .issues-list {
+            width: 400px;
+            min-width: 300px;
+            border-right: 1px solid var(--border);
+            background: var(--card-bg);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .issue-detail {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            background: var(--bg);
+        }
+
+        /* Search bar */
+        .search-bar {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .search-bar input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .search-bar input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .search-bar .hint {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 8px;
+        }
+
+        /* Issue list */
+        .issues-scroll {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .issue-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .issue-item:hover {
+            background: var(--bg);
+        }
+
+        .issue-item.selected {
+            background: #e6f0ff;
+            border-left: 3px solid var(--primary);
+        }
+
+        .issue-item-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .issue-key {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 13px;
+        }
+
+        .issue-type-icon {
+            width: 16px;
+            height: 16px;
+        }
+
+        .issue-summary {
+            font-size: 14px;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .issue-meta {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        /* Status badges */
+        .status {
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status.done { background: #e3fcef; color: var(--success); }
+        .status.inprogress { background: #deebff; color: var(--primary); }
+        .status.todo { background: #f4f5f7; color: var(--text-light); }
+
+        /* Issue detail */
+        .detail-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+
+        .detail-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .detail-header h2 {
+            flex: 1;
+            font-size: 20px;
+            line-height: 1.4;
+        }
+
+        .detail-header .issue-key {
+            font-size: 14px;
+        }
+
+        .detail-section {
+            margin-top: 24px;
+        }
+
+        .detail-section h3 {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .description {
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Info grid */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+        }
+
+        .info-item label {
+            display: block;
+            font-size: 11px;
+            color: var(--text-light);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .info-item span {
+            font-size: 14px;
+        }
+
+        /* Comments */
+        .comment {
+            padding: 16px;
+            background: var(--bg);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .comment-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .comment-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--primary);
+        }
+
+        .comment-author {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .comment-date {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .comment-body {
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+
+        /* Comment form */
+        .comment-form {
+            margin-top: 16px;
+        }
+
+        .comment-form textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .comment-form textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .comment-form button {
+            margin-top: 8px;
+            padding: 8px 16px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .comment-form button:hover {
+            background: var(--primary-hover);
+        }
+
+        .comment-form button:disabled {
+            background: var(--text-light);
+            cursor: not-allowed;
+        }
+
+        /* Attachments */
+        .attachments-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .attachment {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--bg);
+            border-radius: 4px;
+            text-decoration: none;
+            color: var(--text);
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .attachment:hover {
+            background: #e6f0ff;
+        }
+
+        .attachment-icon {
+            font-size: 16px;
+        }
+
+        /* Time tracking panel */
+        .time-panel {
+            flex-direction: column;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .time-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .time-header input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .time-header input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--primary-hover);
+        }
+
+        /* Summary cards */
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .summary-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+
+        .summary-card label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-light);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .summary-card .value {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .summary-card .value.estimate { color: var(--primary); }
+        .summary-card .value.spent { color: var(--success); }
+        .summary-card .value.remaining { color: var(--warning); }
+
+        /* Time table */
+        .time-table {
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .time-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .time-table th,
+        .time-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .time-table th {
+            background: var(--bg);
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-light);
+        }
+
+        .time-table tr:hover td {
+            background: var(--bg);
+        }
+
+        .time-table .key-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .time-table .key-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Progress bar */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar .fill {
+            height: 100%;
+            background: var(--success);
+            transition: width 0.3s;
+        }
+
+        /* Loading & Empty states */
+        .loading, .empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 48px;
+            color: var(--text-light);
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+        }
+
+        .toast {
+            padding: 12px 20px;
+            background: var(--text);
+            color: white;
+            border-radius: 4px;
+            margin-top: 8px;
+            box-shadow: var(--shadow);
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Empty detail state */
+        .empty-detail {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-light);
+        }
+
+        .empty-detail svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>🦒 Jirafik</h1>
+        <nav class="tabs">
+            <button class="tab active" data-tab="issues">Задачи</button>
+            <button class="tab" data-tab="time">Учёт времени</button>
+        </nav>
+    </header>
+
+    <main class="main">
+        <!-- Issues Panel -->
+        <div class="panel active" id="panel-issues">
+            <aside class="issues-list">
+                <div class="search-bar">
+                    <input type="text" id="jql-input" placeholder="JQL запрос...">
+                    <div class="hint">Например: project = MYPROJ AND status != Done</div>
+                </div>
+                <div class="issues-scroll" id="issues-container">
+                    <div class="empty">
+                        <p>Введите JQL запрос для поиска задач</p>
+                    </div>
+                </div>
+            </aside>
+            <section class="issue-detail" id="issue-detail">
+                <div class="empty-detail">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    <p>Выберите задачу для просмотра</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- Time Tracking Panel -->
+        <div class="panel" id="panel-time">
+            <div class="time-panel">
+                <div class="time-header">
+                    <input type="text" id="time-jql-input" placeholder="JQL запрос для отчёта по времени...">
+                    <button class="btn" onclick="loadTimeReport()">Загрузить отчёт</button>
+                </div>
+                <div class="summary-cards" id="time-summary">
+                    <div class="summary-card">
+                        <label>Оценка</label>
+                        <div class="value estimate">-</div>
+                    </div>
+                    <div class="summary-card">
+                        <label>Потрачено</label>
+                        <div class="value spent">-</div>
+                    </div>
+                    <div class="summary-card">
+                        <label>Осталось</label>
+                        <div class="value remaining">-</div>
+                    </div>
+                </div>
+                <div class="time-table" id="time-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Задача</th>
+                                <th>Название</th>
+                                <th>Статус</th>
+                                <th>Исполнитель</th>
+                                <th>Оценка</th>
+                                <th>Потрачено</th>
+                                <th>Прогресс</th>
+                            </tr>
+                        </thead>
+                        <tbody id="time-table-body">
+                            <tr>
+                                <td colspan="7" style="text-align: center; color: var(--text-light);">
+                                    Введите JQL запрос и нажмите "Загрузить отчёт"
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // ============================================
+        // Application State - Single source of truth
+        // ============================================
+        const state = {
+            // Configuration
+            config: {
+                apiUrl: 'backend.php',
+            },
+
+            // Current tab
+            activeTab: 'issues',
+
+            // Issues state
+            issues: {
+                jql: '',
+                list: [],
+                total: 0,
+                loading: false,
+                selectedKey: null,
+                selectedIssue: null,
+                detailLoading: false,
+            },
+
+            // Time tracking state
+            time: {
+                jql: '',
+                report: null,
+                loading: false,
+            },
+
+            // Comment form
+            comment: {
+                text: '',
+                sending: false,
+            }
+        };
+
+        // ============================================
+        // API Functions
+        // ============================================
+        async function api(action, params = {}, method = 'GET', body = null) {
+            const url = new URL(state.config.apiUrl, window.location.href);
+            url.searchParams.set('action', action);
+
+            for (const [key, value] of Object.entries(params)) {
+                url.searchParams.set(key, value);
+            }
+
+            const options = { method };
+            if (body) {
+                options.headers = { 'Content-Type': 'application/json' };
+                options.body = JSON.stringify(body);
+            }
+
+            const response = await fetch(url.toString(), options);
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'Unknown error');
+            }
+
+            return data;
+        }
+
+        // ============================================
+        // Render Functions
+        // ============================================
+        function render() {
+            renderTabs();
+            renderIssuesList();
+            renderIssueDetail();
+            renderTimeReport();
+        }
+
+        function renderTabs() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === state.activeTab);
+            });
+            document.querySelectorAll('.panel').forEach(panel => {
+                panel.classList.toggle('active', panel.id === `panel-${state.activeTab}`);
+            });
+        }
+
+        function renderIssuesList() {
+            const container = document.getElementById('issues-container');
+
+            if (state.issues.loading) {
+                container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Загрузка...</p></div>';
+                return;
+            }
+
+            if (state.issues.list.length === 0) {
+                container.innerHTML = '<div class="empty"><p>Введите JQL запрос для поиска задач</p></div>';
+                return;
+            }
+
+            container.innerHTML = state.issues.list.map(issue => `
+                <div class="issue-item ${issue.key === state.issues.selectedKey ? 'selected' : ''}"
+                     onclick="selectIssue('${issue.key}')">
+                    <div class="issue-item-header">
+                        ${issue.issueTypeIcon ? `<img src="${issue.issueTypeIcon}" class="issue-type-icon" alt="">` : ''}
+                        <span class="issue-key">${issue.key}</span>
+                        <span class="status ${getStatusClass(issue.statusCategory)}">${issue.status}</span>
+                    </div>
+                    <div class="issue-summary">${escapeHtml(issue.summary)}</div>
+                    <div class="issue-meta">
+                        <span>${issue.assignee}</span>
+                        ${issue.timeSpentFormatted ? `<span>⏱ ${issue.timeSpentFormatted}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderIssueDetail() {
+            const container = document.getElementById('issue-detail');
+            const issue = state.issues.selectedIssue;
+
+            if (state.issues.detailLoading) {
+                container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Загрузка...</p></div>';
+                return;
+            }
+
+            if (!issue) {
+                container.innerHTML = `
+                    <div class="empty-detail">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        <p>Выберите задачу для просмотра</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="detail-card">
+                    <div class="detail-header">
+                        ${issue.issueTypeIcon ? `<img src="${issue.issueTypeIcon}" class="issue-type-icon" alt="">` : ''}
+                        <span class="issue-key">${issue.key}</span>
+                        <span class="status ${getStatusClass(issue.statusCategory)}">${issue.status}</span>
+                    </div>
+                    <h2>${escapeHtml(issue.summary)}</h2>
+
+                    <div class="info-grid" style="margin-top: 20px;">
+                        <div class="info-item">
+                            <label>Исполнитель</label>
+                            <span>${issue.assignee}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Автор</label>
+                            <span>${issue.reporter}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Приоритет</label>
+                            <span>${issue.priority}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Срок</label>
+                            <span>${issue.dueDate ? formatDate(issue.dueDate) : '-'}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Оценка</label>
+                            <span>${issue.originalEstimateFormatted || '-'}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Потрачено</label>
+                            <span>${issue.timeSpentFormatted || '-'}</span>
+                        </div>
+                    </div>
+
+                    ${issue.description ? `
+                        <div class="detail-section">
+                            <h3>Описание</h3>
+                            <div class="description">${escapeHtml(issue.description)}</div>
+                        </div>
+                    ` : ''}
+                </div>
+
+                ${issue.attachments && issue.attachments.length > 0 ? `
+                    <div class="detail-card">
+                        <h3 style="margin-bottom: 12px;">Вложения (${issue.attachments.length})</h3>
+                        <div class="attachments-list">
+                            ${issue.attachments.map(att => `
+                                <a href="${att.content}" target="_blank" class="attachment">
+                                    <span class="attachment-icon">📎</span>
+                                    <span>${escapeHtml(att.filename)}</span>
+                                    <span style="color: var(--text-light);">(${formatSize(att.size)})</span>
+                                </a>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
+                <div class="detail-card">
+                    <h3 style="margin-bottom: 12px;">Комментарии (${issue.comments ? issue.comments.length : 0})</h3>
+
+                    ${issue.comments && issue.comments.length > 0 ? issue.comments.map(comment => `
+                        <div class="comment">
+                            <div class="comment-header">
+                                ${comment.authorAvatar
+                                    ? `<img src="${comment.authorAvatar}" class="comment-avatar" alt="">`
+                                    : '<div class="comment-avatar"></div>'}
+                                <span class="comment-author">${escapeHtml(comment.author)}</span>
+                                <span class="comment-date">${formatDate(comment.created)}</span>
+                            </div>
+                            <div class="comment-body">${escapeHtml(comment.body)}</div>
+                        </div>
+                    `).join('') : '<p style="color: var(--text-light);">Нет комментариев</p>'}
+
+                    <div class="comment-form">
+                        <textarea id="comment-text" placeholder="Написать комментарий...">${state.comment.text}</textarea>
+                        <button onclick="addComment()" ${state.comment.sending ? 'disabled' : ''}>
+                            ${state.comment.sending ? 'Отправка...' : 'Отправить'}
+                        </button>
+                    </div>
+                </div>
+
+                ${issue.worklogs && issue.worklogs.length > 0 ? `
+                    <div class="detail-card">
+                        <h3 style="margin-bottom: 12px;">Затраченное время (${issue.worklogs.length})</h3>
+                        ${issue.worklogs.map(log => `
+                            <div class="comment">
+                                <div class="comment-header">
+                                    <span class="comment-author">${escapeHtml(log.author)}</span>
+                                    <span style="font-weight: 600; color: var(--success);">${log.timeSpent}</span>
+                                    <span class="comment-date">${formatDate(log.started)}</span>
+                                </div>
+                                ${log.comment ? `<div class="comment-body">${escapeHtml(log.comment)}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        function renderTimeReport() {
+            const summaryContainer = document.getElementById('time-summary');
+            const tableBody = document.getElementById('time-table-body');
+            const report = state.time.report;
+
+            if (state.time.loading) {
+                tableBody.innerHTML = '<tr><td colspan="7"><div class="loading"><div class="spinner"></div></div></td></tr>';
+                return;
+            }
+
+            if (!report) {
+                return;
+            }
+
+            // Update summary
+            summaryContainer.innerHTML = `
+                <div class="summary-card">
+                    <label>Оценка</label>
+                    <div class="value estimate">${report.totalOriginalEstimateFormatted || '-'}</div>
+                </div>
+                <div class="summary-card">
+                    <label>Потрачено</label>
+                    <div class="value spent">${report.totalTimeSpentFormatted || '-'}</div>
+                </div>
+                <div class="summary-card">
+                    <label>Осталось</label>
+                    <div class="value remaining">${report.totalRemainingEstimateFormatted || '-'}</div>
+                </div>
+            `;
+
+            // Update table
+            if (report.issues.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Задачи не найдены</td></tr>';
+                return;
+            }
+
+            tableBody.innerHTML = report.issues.map(issue => {
+                const progress = issue.originalEstimate > 0
+                    ? Math.min(100, Math.round((issue.timeSpent / issue.originalEstimate) * 100))
+                    : 0;
+
+                return `
+                    <tr>
+                        <td><a href="#" class="key-link" onclick="viewIssueFromTime('${issue.key}')">${issue.key}</a></td>
+                        <td>${escapeHtml(issue.summary)}</td>
+                        <td><span class="status ${getStatusClass(issue.statusCategory)}">${issue.status}</span></td>
+                        <td>${issue.assignee}</td>
+                        <td>${issue.originalEstimateFormatted || '-'}</td>
+                        <td>${issue.timeSpentFormatted || '-'}</td>
+                        <td style="width: 120px;">
+                            <div class="progress-bar">
+                                <div class="fill" style="width: ${progress}%; background: ${progress > 100 ? 'var(--danger)' : 'var(--success)'}"></div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ============================================
+        // Action Functions
+        // ============================================
+        async function searchIssues() {
+            const jql = document.getElementById('jql-input').value.trim();
+            if (!jql) return;
+
+            state.issues.jql = jql;
+            state.issues.loading = true;
+            state.issues.selectedKey = null;
+            state.issues.selectedIssue = null;
+            render();
+
+            try {
+                const data = await api('search', { jql, maxResults: 50 });
+                state.issues.list = data.issues;
+                state.issues.total = data.total;
+            } catch (error) {
+                showToast(error.message, 'error');
+                state.issues.list = [];
+            } finally {
+                state.issues.loading = false;
+                render();
+            }
+        }
+
+        async function selectIssue(key) {
+            if (state.issues.selectedKey === key) return;
+
+            state.issues.selectedKey = key;
+            state.issues.detailLoading = true;
+            state.comment.text = '';
+            render();
+
+            try {
+                const data = await api('get', { key });
+                state.issues.selectedIssue = data.issue;
+            } catch (error) {
+                showToast(error.message, 'error');
+                state.issues.selectedIssue = null;
+            } finally {
+                state.issues.detailLoading = false;
+                render();
+            }
+        }
+
+        async function addComment() {
+            const textarea = document.getElementById('comment-text');
+            const text = textarea.value.trim();
+
+            if (!text || !state.issues.selectedKey) return;
+
+            state.comment.text = text;
+            state.comment.sending = true;
+            render();
+
+            try {
+                await api('addComment', {}, 'POST', {
+                    key: state.issues.selectedKey,
+                    comment: text
+                });
+
+                state.comment.text = '';
+                showToast('Комментарий добавлен', 'success');
+
+                // Reload issue to get updated comments
+                await selectIssue(state.issues.selectedKey);
+            } catch (error) {
+                showToast(error.message, 'error');
+            } finally {
+                state.comment.sending = false;
+                render();
+            }
+        }
+
+        async function loadTimeReport() {
+            const jql = document.getElementById('time-jql-input').value.trim();
+            if (!jql) {
+                showToast('Введите JQL запрос', 'error');
+                return;
+            }
+
+            state.time.jql = jql;
+            state.time.loading = true;
+            render();
+
+            try {
+                const data = await api('timeReport', { jql, maxResults: 100 });
+                state.time.report = data.report;
+            } catch (error) {
+                showToast(error.message, 'error');
+                state.time.report = null;
+            } finally {
+                state.time.loading = false;
+                render();
+            }
+        }
+
+        function viewIssueFromTime(key) {
+            state.activeTab = 'issues';
+            render();
+            selectIssue(key);
+        }
+
+        function switchTab(tab) {
+            state.activeTab = tab;
+            render();
+        }
+
+        // ============================================
+        // Utility Functions
+        // ============================================
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function getStatusClass(category) {
+            switch (category) {
+                case 'done': return 'done';
+                case 'indeterminate': return 'inprogress';
+                default: return 'todo';
+            }
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('ru-RU', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // ============================================
+        // Event Listeners
+        // ============================================
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+        });
+
+        document.getElementById('jql-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') searchIssues();
+        });
+
+        document.getElementById('time-jql-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') loadTimeReport();
+        });
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>
