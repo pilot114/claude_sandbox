@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>06. Bloom Post-Processing - WebGPU</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 2px solid #16213e;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        .info {
+            margin: 20px;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            max-width: 800px;
+        }
+        h1 { color: #ffd700; }
+        a { color: #4da6ff; }
+        .controls {
+            margin: 10px 0;
+        }
+        input[type="range"] {
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1>06. Bloom Post-Processing</h1>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <div class="info">
+        <h3>Concept:</h3>
+        <p>Bloom creates a glow effect around bright areas using multi-pass rendering:</p>
+        <ul>
+            <li><strong>Render to Texture:</strong> Scene rendered to offscreen texture</li>
+            <li><strong>Bright Pass:</strong> Extract pixels above brightness threshold</li>
+            <li><strong>Gaussian Blur:</strong> Two-pass blur (horizontal + vertical) for soft glow</li>
+            <li><strong>Composite:</strong> Combine original scene with blurred bright areas</li>
+        </ul>
+        <div class="controls">
+            <label>Bloom Intensity: <input type="range" id="intensity" min="0" max="200" value="80"> <span id="intensityValue">0.8</span></label>
+        </div>
+        <p>Watch the glowing cubes rotate! The bloom effect creates a realistic light bleeding effect.</p>
+        <a href="index.html">← Back to examples</a>
+    </div>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const intensitySlider = document.getElementById('intensity');
+        const intensityValue = document.getElementById('intensityValue');
+
+        let bloomIntensity = 0.8;
+        intensitySlider.addEventListener('input', (e) => {
+            bloomIntensity = e.target.value / 100;
+            intensityValue.textContent = bloomIntensity.toFixed(2);
+        });
+
+        const adapter = await navigator.gpu?.requestAdapter();
+        const device = await adapter?.requestDevice();
+
+        if (!device) {
+            alert('WebGPU not supported!');
+            throw new Error('WebGPU not supported');
+        }
+
+        const context = canvas.getContext('webgpu');
+        const format = navigator.gpu.getPreferredCanvasFormat();
+        context.configure({ device, format });
+
+        // Cube geometry
+        const cubeVertices = new Float32Array([
+            -1, -1,  1,   1, -1,  1,   1,  1,  1,  -1,  1,  1,
+            -1, -1, -1,  -1,  1, -1,   1,  1, -1,   1, -1, -1,
+            -1,  1, -1,  -1,  1,  1,   1,  1,  1,   1,  1, -1,
+            -1, -1, -1,   1, -1, -1,   1, -1,  1,  -1, -1,  1,
+             1, -1, -1,   1,  1, -1,   1,  1,  1,   1, -1,  1,
+            -1, -1, -1,  -1,  1, -1,  -1,  1,  1,  -1, -1,  1,
+        ]);
+
+        const cubeIndices = new Uint16Array([
+            0,  1,  2,    0,  2,  3,    4,  5,  6,    4,  6,  7,
+            8,  9, 10,    8, 10, 11,   12, 13, 14,   12, 14, 15,
+           16, 17, 18,   16, 18, 19,   20, 21, 22,   20, 22, 23,
+        ]);
+
+        const vertexBuffer = device.createBuffer({
+            size: cubeVertices.byteLength,
+            usage: GPUBufferUsage.VERTEX,
+            mappedAtCreation: true,
+        });
+        new Float32Array(vertexBuffer.getMappedRange()).set(cubeVertices);
+        vertexBuffer.unmap();
+
+        const indexBuffer = device.createBuffer({
+            size: cubeIndices.byteLength,
+            usage: GPUBufferUsage.INDEX,
+            mappedAtCreation: true,
+        });
+        new Uint16Array(indexBuffer.getMappedRange()).set(cubeIndices);
+        indexBuffer.unmap();
+
+        // Fullscreen quad for post-processing
+        const quadVertices = new Float32Array([
+            -1, -1,  1, -1,  1,  1,  -1, -1,  1,  1, -1,  1
+        ]);
+
+        const quadBuffer = device.createBuffer({
+            size: quadVertices.byteLength,
+            usage: GPUBufferUsage.VERTEX,
+            mappedAtCreation: true,
+        });
+        new Float32Array(quadBuffer.getMappedRange()).set(quadVertices);
+        quadBuffer.unmap();
+
+        // Render targets
+        const sceneTexture = device.createTexture({
+            size: [canvas.width, canvas.height],
+            format: 'rgba16float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+
+        const brightTexture = device.createTexture({
+            size: [canvas.width / 2, canvas.height / 2],
+            format: 'rgba16float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+
+        const blurTextures = [0, 1].map(() => device.createTexture({
+            size: [canvas.width / 2, canvas.height / 2],
+            format: 'rgba16float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        }));
+
+        const depthTexture = device.createTexture({
+            size: [canvas.width, canvas.height],
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+
+        const sampler = device.createSampler({
+            magFilter: 'linear',
+            minFilter: 'linear',
+        });
+
+        // Uniforms
+        const sceneUniformBuffer = device.createBuffer({
+            size: 16 * 4 * 3 + 4 * 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        const postUniformBuffer = device.createBuffer({
+            size: 4 * 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        // Scene rendering shader
+        const sceneShader = `
+            struct Uniforms {
+                model: mat4x4<f32>,
+                view: mat4x4<f32>,
+                projection: mat4x4<f32>,
+                color: vec4<f32>,
+            }
+
+            @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+            struct VertexOutput {
+                @builtin(position) position: vec4<f32>,
+                @location(0) worldPos: vec3<f32>,
+            }
+
+            @vertex
+            fn vertexMain(@location(0) position: vec3<f32>) -> VertexOutput {
+                var output: VertexOutput;
+                let worldPos = uniforms.model * vec4<f32>(position, 1.0);
+                output.worldPos = worldPos.xyz;
+                output.position = uniforms.projection * uniforms.view * worldPos;
+                return output;
+            }
+
+            @fragment
+            fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
+                return uniforms.color;
+            }
+        `;
+
+        // Bright pass shader
+        const brightPassShader = `
+            @group(0) @binding(0) var inputTexture: texture_2d<f32>;
+            @group(0) @binding(1) var inputSampler: sampler;
+
+            @vertex
+            fn vertexMain(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(position, 0.0, 1.0);
+            }
+
+            @fragment
+            fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+                let uv = position.xy / vec2<f32>(800.0, 600.0);
+                let color = textureSample(inputTexture, inputSampler, uv);
+
+                // Extract bright areas
+                let brightness = dot(color.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+                let threshold = 1.0;
+
+                if (brightness > threshold) {
+                    return vec4<f32>(color.rgb * (brightness - threshold), 1.0);
+                }
+                return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            }
+        `;
+
+        // Gaussian blur shader
+        const blurShader = `
+            struct Params {
+                horizontal: f32,
+            }
+
+            @group(0) @binding(0) var inputTexture: texture_2d<f32>;
+            @group(0) @binding(1) var inputSampler: sampler;
+            @group(0) @binding(2) var<uniform> params: Params;
+
+            @vertex
+            fn vertexMain(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(position, 0.0, 1.0);
+            }
+
+            @fragment
+            fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+                let uv = position.xy / vec2<f32>(400.0, 300.0);
+                let texelSize = 1.0 / vec2<f32>(400.0, 300.0);
+
+                var result = vec3<f32>(0.0);
+                let weights = array<f32, 5>(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+
+                if (params.horizontal > 0.5) {
+                    result += textureSample(inputTexture, inputSampler, uv).rgb * weights[0];
+                    for (var i = 1; i < 5; i++) {
+                        let offset = vec2<f32>(texelSize.x * f32(i), 0.0);
+                        result += textureSample(inputTexture, inputSampler, uv + offset).rgb * weights[i];
+                        result += textureSample(inputTexture, inputSampler, uv - offset).rgb * weights[i];
+                    }
+                } else {
+                    result += textureSample(inputTexture, inputSampler, uv).rgb * weights[0];
+                    for (var i = 1; i < 5; i++) {
+                        let offset = vec2<f32>(0.0, texelSize.y * f32(i));
+                        result += textureSample(inputTexture, inputSampler, uv + offset).rgb * weights[i];
+                        result += textureSample(inputTexture, inputSampler, uv - offset).rgb * weights[i];
+                    }
+                }
+
+                return vec4<f32>(result, 1.0);
+            }
+        `;
+
+        // Composite shader
+        const compositeShader = `
+            struct Params {
+                intensity: f32,
+            }
+
+            @group(0) @binding(0) var sceneTexture: texture_2d<f32>;
+            @group(0) @binding(1) var bloomTexture: texture_2d<f32>;
+            @group(0) @binding(2) var texSampler: sampler;
+            @group(0) @binding(3) var<uniform> params: Params;
+
+            @vertex
+            fn vertexMain(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(position, 0.0, 1.0);
+            }
+
+            @fragment
+            fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+                let uv = position.xy / vec2<f32>(800.0, 600.0);
+                let scene = textureSample(sceneTexture, texSampler, uv).rgb;
+                let bloom = textureSample(bloomTexture, texSampler, uv).rgb;
+
+                let result = scene + bloom * params.intensity;
+                return vec4<f32>(result, 1.0);
+            }
+        `;
+
+        const sceneModule = device.createShaderModule({ code: sceneShader });
+        const brightModule = device.createShaderModule({ code: brightPassShader });
+        const blurModule = device.createShaderModule({ code: blurShader });
+        const compositeModule = device.createShaderModule({ code: compositeShader });
+
+        // Pipelines
+        const scenePipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: {
+                module: sceneModule,
+                entryPoint: 'vertexMain',
+                buffers: [{
+                    arrayStride: 3 * 4,
+                    attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }]
+                }]
+            },
+            fragment: {
+                module: sceneModule,
+                entryPoint: 'fragmentMain',
+                targets: [{ format: 'rgba16float' }]
+            },
+            primitive: { topology: 'triangle-list', cullMode: 'back' },
+            depthStencil: {
+                depthWriteEnabled: true,
+                depthCompare: 'less',
+                format: 'depth24plus',
+            },
+        });
+
+        const quadLayout = {
+            arrayStride: 2 * 4,
+            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }]
+        };
+
+        const brightPipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: brightModule, entryPoint: 'vertexMain', buffers: [quadLayout] },
+            fragment: { module: brightModule, entryPoint: 'fragmentMain', targets: [{ format: 'rgba16float' }] },
+            primitive: { topology: 'triangle-list' },
+        });
+
+        const blurPipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: blurModule, entryPoint: 'vertexMain', buffers: [quadLayout] },
+            fragment: { module: blurModule, entryPoint: 'fragmentMain', targets: [{ format: 'rgba16float' }] },
+            primitive: { topology: 'triangle-list' },
+        });
+
+        const compositePipeline = device.createRenderPipeline({
+            layout: 'auto',
+            vertex: { module: compositeModule, entryPoint: 'vertexMain', buffers: [quadLayout] },
+            fragment: { module: compositeModule, entryPoint: 'fragmentMain', targets: [{ format }] },
+            primitive: { topology: 'triangle-list' },
+        });
+
+        // Matrix utilities
+        function perspective(fov, aspect, near, far) {
+            const f = 1.0 / Math.tan(fov / 2);
+            const nf = 1 / (near - far);
+            return new Float32Array([
+                f / aspect, 0, 0, 0, 0, f, 0, 0,
+                0, 0, (far + near) * nf, -1,
+                0, 0, 2 * far * near * nf, 0
+            ]);
+        }
+
+        function lookAt(eye, center, up) {
+            const z = normalize([eye[0] - center[0], eye[1] - center[1], eye[2] - center[2]]);
+            const x = normalize(cross(up, z));
+            const y = cross(z, x);
+            return new Float32Array([
+                x[0], y[0], z[0], 0, x[1], y[1], z[1], 0,
+                x[2], y[2], z[2], 0,
+                -dot(x, eye), -dot(y, eye), -dot(z, eye), 1
+            ]);
+        }
+
+        function rotateY(angle) {
+            const c = Math.cos(angle), s = Math.sin(angle);
+            return new Float32Array([
+                c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0, 0, 0, 0, 1
+            ]);
+        }
+
+        function translate(x, y, z) {
+            return new Float32Array([
+                1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1
+            ]);
+        }
+
+        function multiply(a, b) {
+            const result = new Float32Array(16);
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    result[i * 4 + j] =
+                        a[i * 4 + 0] * b[0 * 4 + j] +
+                        a[i * 4 + 1] * b[1 * 4 + j] +
+                        a[i * 4 + 2] * b[2 * 4 + j] +
+                        a[i * 4 + 3] * b[3 * 4 + j];
+                }
+            }
+            return result;
+        }
+
+        function normalize(v) {
+            const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+            return [v[0]/len, v[1]/len, v[2]/len];
+        }
+
+        function cross(a, b) {
+            return [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0]
+            ];
+        }
+
+        function dot(a, b) {
+            return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+        }
+
+        let rotation = 0;
+        function render() {
+            rotation += 0.01;
+
+            const view = lookAt([0, 3, 8], [0, 0, 0], [0, 1, 0]);
+            const projection = perspective(Math.PI / 4, canvas.width / canvas.height, 0.1, 100);
+
+            const commandEncoder = device.createCommandEncoder();
+
+            // 1. Render scene
+            const scenePass = commandEncoder.beginRenderPass({
+                colorAttachments: [{
+                    view: sceneTexture.createView(),
+                    clearValue: { r: 0.05, g: 0.05, b: 0.1, a: 1 },
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                }],
+                depthStencilAttachment: {
+                    view: depthTexture.createView(),
+                    depthClearValue: 1.0,
+                    depthLoadOp: 'clear',
+                    depthStoreOp: 'store',
+                }
+            });
+
+            scenePass.setPipeline(scenePipeline);
+            scenePass.setVertexBuffer(0, vertexBuffer);
+            scenePass.setIndexBuffer(indexBuffer, 'uint16');
+
+            // Draw multiple cubes
+            const cubes = [
+                { pos: [-2, 0, 0], color: [3, 0.5, 0.5, 1] },
+                { pos: [2, 0, 0], color: [0.5, 3, 0.5, 1] },
+                { pos: [0, 2, 0], color: [0.5, 0.5, 3, 1] },
+            ];
+
+            cubes.forEach(cube => {
+                const model = multiply(translate(...cube.pos), rotateY(rotation));
+                const uniforms = new Float32Array(52);
+                uniforms.set(model, 0);
+                uniforms.set(view, 16);
+                uniforms.set(projection, 32);
+                uniforms.set(cube.color, 48);
+                device.queue.writeBuffer(sceneUniformBuffer, 0, uniforms);
+
+                const bindGroup = device.createBindGroup({
+                    layout: scenePipeline.getBindGroupLayout(0),
+                    entries: [{ binding: 0, resource: { buffer: sceneUniformBuffer } }]
+                });
+
+                scenePass.setBindGroup(0, bindGroup);
+                scenePass.drawIndexed(cubeIndices.length);
+            });
+
+            scenePass.end();
+
+            // 2. Bright pass
+            const brightPass = commandEncoder.beginRenderPass({
+                colorAttachments: [{
+                    view: brightTexture.createView(),
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                }]
+            });
+
+            brightPass.setPipeline(brightPipeline);
+            brightPass.setVertexBuffer(0, quadBuffer);
+            const brightBindGroup = device.createBindGroup({
+                layout: brightPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: sceneTexture.createView() },
+                    { binding: 1, resource: sampler },
+                ]
+            });
+            brightPass.setBindGroup(0, brightBindGroup);
+            brightPass.draw(6);
+            brightPass.end();
+
+            // 3. Blur passes
+            for (let i = 0; i < 2; i++) {
+                // Horizontal
+                const hBlurPass = commandEncoder.beginRenderPass({
+                    colorAttachments: [{
+                        view: blurTextures[0].createView(),
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                    }]
+                });
+                hBlurPass.setPipeline(blurPipeline);
+                hBlurPass.setVertexBuffer(0, quadBuffer);
+                device.queue.writeBuffer(postUniformBuffer, 0, new Float32Array([1]));
+                const hBlurBindGroup = device.createBindGroup({
+                    layout: blurPipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: (i === 0 ? brightTexture : blurTextures[1]).createView() },
+                        { binding: 1, resource: sampler },
+                        { binding: 2, resource: { buffer: postUniformBuffer } },
+                    ]
+                });
+                hBlurPass.setBindGroup(0, hBlurBindGroup);
+                hBlurPass.draw(6);
+                hBlurPass.end();
+
+                // Vertical
+                const vBlurPass = commandEncoder.beginRenderPass({
+                    colorAttachments: [{
+                        view: blurTextures[1].createView(),
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                    }]
+                });
+                vBlurPass.setPipeline(blurPipeline);
+                vBlurPass.setVertexBuffer(0, quadBuffer);
+                device.queue.writeBuffer(postUniformBuffer, 0, new Float32Array([0]));
+                const vBlurBindGroup = device.createBindGroup({
+                    layout: blurPipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: blurTextures[0].createView() },
+                        { binding: 1, resource: sampler },
+                        { binding: 2, resource: { buffer: postUniformBuffer } },
+                    ]
+                });
+                vBlurPass.setBindGroup(0, vBlurBindGroup);
+                vBlurPass.draw(6);
+                vBlurPass.end();
+            }
+
+            // 4. Composite
+            const compositePass = commandEncoder.beginRenderPass({
+                colorAttachments: [{
+                    view: context.getCurrentTexture().createView(),
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                }]
+            });
+
+            compositePass.setPipeline(compositePipeline);
+            compositePass.setVertexBuffer(0, quadBuffer);
+            device.queue.writeBuffer(postUniformBuffer, 0, new Float32Array([bloomIntensity]));
+            const compositeBindGroup = device.createBindGroup({
+                layout: compositePipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: sceneTexture.createView() },
+                    { binding: 1, resource: blurTextures[1].createView() },
+                    { binding: 2, resource: sampler },
+                    { binding: 3, resource: { buffer: postUniformBuffer } },
+                ]
+            });
+            compositePass.setBindGroup(0, compositeBindGroup);
+            compositePass.draw(6);
+            compositePass.end();
+
+            device.queue.submit([commandEncoder.finish()]);
+            requestAnimationFrame(render);
+        }
+
+        render();
+    </script>
+</body>
+</html>
